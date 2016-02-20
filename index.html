@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+
+svg {
+  font: 10px sans-serif;
+}
+
+
+.superGhost path{
+  fill: none;
+  stroke: none;
+  stroke-width: 15px;
+  pointer-events: stroke;
+}
+
+.ghost path {
+  fill: none;
+  stroke: #ddd;
+  stroke-width: 1.7px;
+  pointer-events: stroke;
+}
+
+.frontLine path {
+  fill: none;
+  stroke: steelblue;
+  stroke-width: 1.7px;
+}
+
+.brush .extent {
+  fill-opacity: .3;
+  stroke: #fff;
+  shape-rendering: crispEdges;
+}
+
+.axis line,
+.axis path {
+  fill: none;
+  stroke: #000;
+  shape-rendering: crispEdges;
+}
+
+.axis text {
+  text-shadow: 0 1px 0 #fff, 1px 0 0 #fff, 0 -1px 0 #fff, -1px 0 0 #fff;
+  cursor: move;
+}
+
+.label {
+  -webkit-transition: fill 125ms linear;
+}
+
+
+.active .label:not(.inactive) {
+  font-weight: bold;
+}
+
+.label.inactive {
+  fill: #ccc;
+}
+
+.frontLine path.inactive {
+  stroke: #ccc;
+  stroke-opacity: .5;
+  stroke-width: 1px;
+}
+
+</style>
+<title>INFO 474 Assignment 3</title>
+<head>
+  <h1 style="text-align: center">All You Need To Know About Epson And Canon EOS Cameras</h1>
+</head>
+<body>
+<script src="http://d3js.org/d3.v3.min.js"></script>
+<script>
+
+var margin = {top: 30, right: 10, bottom: 10, left: 150};
+var width = 2000 - margin.left - margin.right;
+var height = 1000 - margin.top - margin.bottom;
+
+var x = d3.scale.ordinal().rangePoints([0, width], 1);
+var y = {};
+var dragging = {};
+
+var line = d3.svg.line();
+var axis = d3.svg.axis().orient("left"); 
+
+var superGhost; // for easier stroking as the stroke width is much bigger
+var ghost;
+var frontLine;
+
+var actives;
+var extents;
+
+var svg = d3.select("body").append("svg")
+    .attr("width", width + margin.left + margin.right)
+    .attr("height", height + margin.top + margin.bottom)
+  .append("g")
+    .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+d3.csv("Camera1.csv", function(error, cameras) {
+
+  x.domain(dimensions = d3.keys(cameras[0]).filter(function(d) {
+
+    if(d == "Model") {   // this domain/axis has to be ordinal, because it is not a continuous value.
+      return y[d] = d3.scale.ordinal() 
+      .domain(cameras.map(function(d){return d.Model})) // returns a hashmap of key of Model, and the value will be model name
+      .rangePoints([height, 0]); 
+
+    } else {
+      return (y[d] = d3.scale.linear()
+        .domain(d3.extent(cameras, function(p) { return +p[d]; })) // return min and max value fo the linear scale
+        .range([height, 0]));
+    }
+    
+  }));
+
+  // the stroking lines
+  superGhost = svg.append("g")
+    .attr("class", "superGhost")
+  .selectAll("path")
+    .data(cameras)
+  .enter().append("path")
+    .attr("d", path);
+
+
+  // The ghost "lines"
+  ghost = svg.append("g")
+      .attr("class", "ghost")
+    .selectAll("path")
+      .data(cameras)
+    .enter().append("path")
+      .attr("d", path);
+
+  // the real blue line
+  frontLine = svg.append("g")
+      .attr("class", "frontLine")
+    .selectAll("path")
+      .data(cameras)
+    .enter().append("path")
+      .attr("d", path);
+
+  // Add a group element for each dimension.
+  var g = svg.selectAll(".dimension")
+      .data(dimensions)
+    .enter().append("g")
+      .attr("class", "dimension")
+      .attr("transform", function(d) { return "translate(" + x(d) + ")"; }) // push the axes right based on the width that is stored previously
+      .call(d3.behavior.drag() // calling onthe axis function
+        .origin(function(d) { return {x: x(d)}; }) // when pressed, it will register the x coordinate
+        .on("dragstart", function(d) {
+          dragging[d] = x(d); // fill the dragging object with the axis one is dragging
+          ghost.attr("visibility", "hidden"); // because there are two overlapping lines (ghost, and real), the ghost has to be temporary invisible
+          superGhost.attr("visibility", "hidden");
+        })
+        .on("drag", function(d) {
+          dragging[d] = Math.min(width, Math.max(0, d3.event.x)); // updating the x coordinate as being dragged
+          frontLine.attr("d", path); // evrey coordinate changed, redraw the line
+          dimensions.sort(function(a, b) { return position(a) - position(b); }); // this will make the other axes take the empty spaces
+          x.domain(dimensions);
+          g.attr("transform", function(d) { return "translate(" + position(d) + ")"; })
+        })
+        .on("dragend", function(d) {
+          delete dragging[d];
+          transition(d3.select(this)).attr("transform", "translate(" + x(d) + ")");
+          transition(frontLine).attr("d", path);
+          ghost
+              .attr("d", path)
+            .transition()
+              .delay(500) // this disallows the ghost line to appear first before the real line after that axis is moved
+              .duration(0)
+              .attr("visibility", null);
+          superGhost
+              .attr("d", path)
+            .transition()
+              .delay(500)
+              .duration(0)
+              .attr("visibility", null);
+        }));
+
+  // Add an axis and title.
+  g.append("g")
+      .attr("class", "axis")
+      .each(function(d) {d3.select(this).call(axis.scale(y[d])); }) // draw the vertical line and the ticks which are already stored from when creating the dimensions
+    .append("text")
+      .attr("class", "title")
+      .style("text-anchor", "middle")
+      .attr("y", -15)
+      .text(function(d) { return d; });
+
+  // Add and store a brush for each axis.
+  g.append("g")
+      .attr("class", "brush")
+      .each(function(d) { // for every dimension, add and store brush 
+        d3.select(this).call(y[d].brush = d3.svg.brush().y(y[d]).on("brushstart", brushstart).on("brush", brush));
+      })
+    .selectAll("rect")
+      .attr("x", -5)
+      .attr("width", 10);
+
+  svg.select(".axis").selectAll("text:not(.title)")
+    .attr("class" ,"label")
+    .data(cameras, function(d) {return d.Model || d;});
+
+  var projection = svg.selectAll(".axis text,.superGhost path,.frontLine path")
+    .on("mouseover", function(d){
+      svg.classed("active", true); // make the labels use .active css class
+      projection.classed("inactive", function(p){return p != d;}).each(moveToFront);;
+       // if the rest of the data is not what being hovered, apply inactive class
+
+    })
+    .on("mouseout", function(d){
+      svg.classed("active", false);
+      projection.classed("inactive", false); // return all the set classes back to normal
+    });
+  
+});
+
+function position(d) {
+  var v = dragging[d];
+  return v == null ? x(d) : v; // telling when the axis can take the empty place
+}
+
+function transition(g) {
+  return g.transition().duration(200);
+}
+
+// Returns the path for a given data point.
+function path(d) {
+  return line(dimensions.map(function(p) { return [position(p), y[p](d[p])]; }));
+}
+
+function brushstart() {
+  d3.event.sourceEvent.stopPropagation();
+}
+
+// Handles a brush event, toggling the display of the real lines.
+function brush() {
+  actives = dimensions.filter(function(p) { return !y[p].brush.empty(); });
+  extents = actives.map(function(p) {
+    // if(p == "Model") {                     // trying to brush ordinal values
+    //   var s = y[p].brush.extent();
+    //   var a = x.domain().filter(function(d) {
+    //     console.log(x("Model"));
+    //     s[0] <= (d = x(d)) && d <= s[1];   
+    //   });
+    // } else {
+      return y[p].brush.extent(); // Takes in the min and the max on the rectangle brush piloted by the user
+    // } 
+  });     
+  frontLine.style("display", function(d) {
+    return actives.every(function(p, i) {
+      // checks if the value of the data is in between the extents values
+      var a = extents[i][0] <= d[p] && d[p] <= extents[i][1]; 
+      return a;
+    }) ? null : "none"; 
+  });
+
+}
+
+function moveToFront() {
+  this.parentNode.appendChild(this);
+}
+
+</script>
