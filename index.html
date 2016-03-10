@@ -70,12 +70,13 @@ svg {
   <h1 style="text-align: center">All You Need To Know About Epson And Canon EOS Cameras</h1>
 </head>
 <body>
+<button onclick="reset()">Reset Comparison</button>
 <script src="http://d3js.org/d3.v3.min.js"></script>
 <script>
 
 var margin = {top: 30, right: 10, bottom: 10, left: 150};
-var width = 2000 - margin.left - margin.right;
-var height = 1000 - margin.top - margin.bottom;
+var width = 1500 - margin.left - margin.right;
+var height = 700 - margin.top - margin.bottom;
 
 var x = d3.scale.ordinal().rangePoints([0, width], 1);
 var y = {};
@@ -96,6 +97,7 @@ var svg = d3.select("body").append("svg")
     .attr("height", height + margin.top + margin.bottom)
   .append("g")
     .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
 
 d3.csv("Camera1.csv", function(error, cameras) {
 
@@ -202,18 +204,21 @@ d3.csv("Camera1.csv", function(error, cameras) {
     .data(cameras, function(d) {return d.Model || d;});
 
   var projection = svg.selectAll(".axis text,.superGhost path,.frontLine path")
-    .on("mouseover", function(d){
+    .on("click", function(d){
       svg.classed("active", true); // make the labels use .active css class
       projection.classed("inactive", function(p){return p != d;}).each(moveToFront);;
        // if the rest of the data is not what being hovered, apply inactive class
 
-    })
-    .on("mouseout", function(d){
-      svg.classed("active", false);
-      projection.classed("inactive", false); // return all the set classes back to normal
     });
   
 });
+
+function reset() {
+    var projection = svg.selectAll(".axis text,.superGhost path,.frontLine path")
+
+  svg.classed("active", false);
+  projection.classed("inactive", false);
+}
 
 function position(d) {
   var v = dragging[d];
